@@ -1,0 +1,256 @@
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.FlowLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.Observable;
+import java.util.Observer;
+import javax.swing.AbstractAction;
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTabbedPane;
+import javax.swing.JTextArea;
+import javax.swing.KeyStroke;
+import javax.swing.ScrollPaneConstants;
+import javax.swing.border.EtchedBorder;
+import javax.swing.border.TitledBorder;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
+import javax.swing.event.UndoableEditEvent;
+import javax.swing.event.UndoableEditListener;
+import javax.swing.text.DefaultHighlighter;
+import javax.swing.text.Highlighter.HighlightPainter;
+import javax.swing.undo.CannotRedoException;
+import javax.swing.undo.CannotUndoException;
+import javax.swing.undo.UndoManager;
+
+public class UserInterface extends JFrame implements Observer
+{
+
+    private static final long serialVersionUID = 1L;
+    private JTabbedPane tabbedPane = null;
+    private MenuBar menubar = null;
+    private KeyHandler keyHandler = null;
+    private ArrayList<JTextArea> textAreaList;
+    UndoManager undoManager = null;
+
+    public UserInterface()
+    {
+        setExtendedState(getExtendedState() | JFrame.MAXIMIZED_BOTH);
+        setTitle(" Text Editor ");
+        setLayout(new BorderLayout());
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setVisible(true);
+        createComponents();
+    }
+
+    private void createComponents()
+    {
+        textAreaList = new ArrayList<JTextArea>();
+        menubar = new MenuBar(this);
+        keyHandler = new KeyHandler(menubar);
+        tabbedPane = new JTabbedPane();
+        undoManager = new UndoManager();
+        setJMenuBar(menubar);
+        add(tabbedPane);
+        addTextArea();
+        addNewTabButton();
+        tabbedPane.addMouseListener(new MouseAdapter()
+        {
+            public void mouseClicked(MouseEvent e)
+            {
+                if (e.getClickCount() == 2)
+                {
+                    addTextArea();
+                }
+            }
+
+        });
+        tabbedPane.addChangeListener(new ChangeListener()
+        {
+            public void stateChanged(ChangeEvent e)
+            {
+                try
+                {
+                    Model.getInstance().setCurrentTabName(tabbedPane.getName());
+                    Model.getInstance().setTextArea(textAreaList.get(tabbedPane.getSelectedIndex()));
+                    Model.getInstance().getTextArea().requestFocusInWindow();
+                } catch (Exception e1)
+                {
+                    addTextArea();
+                }
+            }
+        });
+
+    }
+
+    private void addTextArea()
+    {
+        JTextArea textArea = createTextArea();
+
+
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.setBorder(new TitledBorder(new EtchedBorder()));
+
+        TextLineNumber tln = new TextLineNumber(textArea);
+        scrollPane.setRowHeaderView( tln );
+
+        Model.getInstance().setLatestTab(Math.max(Model.getInstance().getLatestTab() + 1, tabbedPane.getTabCount()));
+
+        if (tabbedPane.getTabCount() == 0)
+        {
+            Model.getInstance().setLatestTab(1);
+        }
+
+        String currentTabName = "New " + (Model.getInstance().getLatestTab());
+
+        Model.getInstance().setCurrentTabName(currentTabName);
+        tabbedPane.add(currentTabName, scrollPane);
+        tabbedPane.setSelectedIndex(tabbedPane.getTabCount() - 1);
+        tabbedPane.setTabComponentAt(tabbedPane.indexOfComponent(scrollPane),
+                getTitlePanel(tabbedPane, scrollPane, currentTabName));
+    }
+
+    private JTextArea createTextArea()
+    {
+        JTextArea textArea = new JTextArea();
+        Model.getInstance().setTextArea(textArea);
+        textArea.addMouseListener(new MouseAdapter()
+        {
+            public void mouseClicked(MouseEvent e)
+            {
+                HighlightPainter painter = new DefaultHighlighter.DefaultHighlightPainter(
+                        Color.YELLOW);
+                if (e.getClickCount() == 2)
+                {
+                    String selectedText = Model.getInstance().getTextArea().getSelectedText();
+
+                }
+                else
+                    {
+                    Model.getInstance().getTextArea().getHighlighter().removeAllHighlights();
+                }
+            }
+        });
+        textArea.addKeyListener(keyHandler);
+        textAreaList.add(textArea);
+
+        textArea.getDocument().addUndoableEditListener(new UndoableEditListener()
+        {
+            @Override
+            public void undoableEditHappened(UndoableEditEvent e)
+            {
+                undoManager.addEdit(e.getEdit());
+            }
+        });
+
+        textArea.getActionMap().put("Undo", new AbstractAction("Undo")
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent evt)
+            {
+                try
+                {
+                    if (undoManager.canUndo())
+                    {
+                        undoManager.undo();
+                    }
+                }
+                catch (CannotUndoException e)
+                {
+                }
+            }
+        });
+        textArea.getInputMap().put(KeyStroke.getKeyStroke("control Z"), "Undo");
+
+        textArea.getActionMap().put("Redo", new AbstractAction("Redo")
+        {
+            private static final long serialVersionUID = 1L;
+            public void actionPerformed(ActionEvent evt)
+            {
+                try
+                {
+                    if (undoManager.canRedo())
+                    {
+                        undoManager.redo();
+                    }
+                } catch (CannotRedoException e)
+                {
+                }
+            }
+        });
+        textArea.getInputMap().put(KeyStroke.getKeyStroke("control Y"), "Redo");
+
+        return textArea;
+    }
+
+    private void addNewTabButton()
+    {
+        JButton newTabButton = new JButton("New Tab");
+        newTabButton.setContentAreaFilled(false);
+        newTabButton.setBorderPainted(false);
+        newTabButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e)
+            {
+                addTextArea();
+            }
+        });
+        menubar.add(newTabButton);
+    }
+
+    private JPanel getTitlePanel(final JTabbedPane tabbedPane, final JScrollPane panel, String title)
+    {
+        JPanel titlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        titlePanel.setOpaque(false);
+        JLabel titleLbl = new JLabel(title);
+        titleLbl.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
+        titlePanel.add(titleLbl);
+        JButton closeButton = new JButton("x");
+        closeButton.setContentAreaFilled(false);
+        closeButton.setBorderPainted(false);
+        closeButton.addMouseListener(new MouseAdapter()
+        {
+            @Override
+            public void mouseClicked(MouseEvent e)
+            {
+                int userResponse = JOptionPane.showConfirmDialog(null,
+                        "Are you sure to close this tab? Any unsaved changes will be lost!");
+                if (userResponse == 0)
+                {
+                    tabbedPane.remove(panel);
+                }
+            }
+        });
+        titlePanel.add(closeButton);
+
+        return titlePanel;
+    }
+
+    public static void main(String[] args)
+    {
+        new UserInterface();
+    }
+
+    @Override
+    public void update(Observable o, Object arg)
+    {
+        if (arg == "setTabName")
+        {
+            String currentTabName = Model.getInstance().getCurrentTabName();
+            Component selectedComponent = tabbedPane.getSelectedComponent();
+            tabbedPane.setTabComponentAt(tabbedPane.indexOfComponent(selectedComponent),
+                    getTitlePanel(tabbedPane, (JScrollPane) selectedComponent, currentTabName));
+        }
+    }
+}
